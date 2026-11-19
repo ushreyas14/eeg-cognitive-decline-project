@@ -13,6 +13,7 @@ __pycache__/
 
 # Markdown docs (study guides, plans, scripts)
 *.md
+!README.md
 
 # Pipeline logs
 logs/
