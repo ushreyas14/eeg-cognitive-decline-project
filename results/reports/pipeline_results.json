@@ -1,26 +1,10 @@
 {
-  "exp1": {
+  "exp6": {
     "status": "success",
-    "time": 67.37653493881226
-  },
-  "exp2": {
-    "status": "success",
-    "time": 3.413830280303955
-  },
-  "exp3": {
-    "status": "success",
-    "time": 318.19618916511536
-  },
-  "exp4": {
-    "status": "success",
-    "time": 30.595359086990356
-  },
-  "exp5": {
-    "status": "success",
-    "time": 1.2597405910491943
+    "time": 9.555670022964478
   },
   "figures": {
     "status": "success",
-    "time": 3.229520082473755
+    "time": 8.93314003944397
   }
 }

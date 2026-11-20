@@ -69,7 +69,7 @@ def run_pipeline(args):
     print_banner(logger)
     pipeline_start = time.time()
 
-    run_exps = set(args.exp) if args.exp else {1, 2, 3, 4, 5}
+    run_exps = set(args.exp) if args.exp else {1, 2, 3, 4, 5, 6}
     total_steps = len(run_exps) + (0 if args.skip_viz else 1) + 2  # +2 for data loading and report
 
     logger.info("Experiments to run: %s", sorted(run_exps))
@@ -192,6 +192,41 @@ def run_pipeline(args):
             traceback.print_exc()
             results["exp5"] = {"status": "failed", "error": str(e)}
 
+    # ── Experiment 6: Age-Discrepancy Classification ─────────────────
+    exp6_results = None
+    if 6 in run_exps:
+        step += 1
+        print_step(logger, step, total_steps, "EXPERIMENT 6 — EEG Age-Discrepancy Classification")
+        # Load Exp 2 results from disk if not already computed this run
+        if exp2_results is None:
+            from pathlib import Path as _Path
+            gap_path = _Path(RESULTS_DIR) / "predictions" / "brain_age_gap.csv"
+            if gap_path.exists():
+                import pandas as _pd
+                _gap_df = _pd.read_csv(gap_path)
+                exp2_results = {
+                    "gap_df": _gap_df,
+                    "age_bias_r_before": _gap_df.get("brain_age_gap", _gap_df.iloc[:, 0]).corr(
+                        _gap_df.get("age", _gap_df.iloc[:, 0])) if "brain_age_gap" in _gap_df.columns and "age" in _gap_df.columns else 0.0,
+                    "age_bias_r_after": 0.0,
+                    "total_time": 0.0,
+                }
+                logger.info("Loaded Exp 2 results from disk (%d subjects)", len(_gap_df))
+        if exp2_results is None:
+            logger.warning("Experiment 2 results needed for Experiment 6; skipping")
+            results["exp6"] = {"status": "skipped", "reason": "exp2 not available"}
+        else:
+            t0 = time.time()
+            try:
+                from src.age_sex_reference_analysis import run_age_sex_reference_analysis
+                exp6_results = run_age_sex_reference_analysis(data, exp2_results, RESULTS_DIR)
+                results["exp6"] = {"status": "success", "time": exp6_results["total_time"]}
+                logger.info("✓ Experiment 6 complete (%.1fs)", time.time() - t0)
+            except Exception as e:
+                logger.error("✗ Experiment 6 FAILED: %s", e)
+                traceback.print_exc()
+                results["exp6"] = {"status": "failed", "error": str(e)}
+
     # ── Figure Generation ────────────────────────────────────────────
     if not args.skip_viz:
         step += 1
@@ -200,7 +235,8 @@ def run_pipeline(args):
         try:
             from src.visualization import generate_all_figures
             generate_all_figures(exp1_results, exp2_results, exp3_results,
-                                 exp4_results, exp5_results, RESULTS_DIR)
+                                 exp4_results, exp5_results, RESULTS_DIR,
+                                 exp6_results=exp6_results)
             results["figures"] = {"status": "success", "time": time.time() - t0}
             logger.info("✓ Figures generated (%.1fs)", time.time() - t0)
         except Exception as e:
@@ -219,7 +255,7 @@ def run_pipeline(args):
         "",
     ]
 
-    for key in ["exp1", "exp2", "exp3", "exp4", "exp5", "figures"]:
+    for key in ["exp1", "exp2", "exp3", "exp4", "exp5", "exp6", "figures"]:
         if key in results:
             r = results[key]
             status = r["status"]
@@ -242,6 +278,25 @@ def run_pipeline(args):
     if exp2_results:
         report_lines.append(f"- Brain-age gap bias correction: r={exp2_results['age_bias_r_before']:.4f} → "
                              f"{exp2_results['age_bias_r_after']:.4f}")
+
+    if exp6_results:
+        cat_stats = exp6_results.get("category_stats")
+        if cat_stats is not None and len(cat_stats) > 0:
+            for _, row in cat_stats.iterrows():
+                report_lines.append(
+                    f"- Exp6 {row['category']}: n={row['n']} ({row['pct_total']:.0f}%)"
+                )
+        omnibus = exp6_results.get("omnibus_df")
+        if omnibus is not None and len(omnibus) > 0:
+            sig = omnibus[omnibus["p_bonferroni"] < 0.05]
+            report_lines.append(
+                f"- Exp6 significant outcomes (Bonferroni): {len(sig)}/{len(omnibus)}"
+            )
+        thr = exp6_results.get("threshold_info", {})
+        if thr:
+            report_lines.append(
+                f"- Exp6 LOO threshold: ±{thr.get('primary', 0):.3f} yr (±0.5 SD={thr.get('sd', 0):.3f})"
+            )
 
     if exp4_results and len(exp4_results.get("metrics", [])) > 0:
         for _, row in exp4_results["metrics"].iterrows():
@@ -279,7 +334,7 @@ if __name__ == "__main__":
     import numpy as np  # needed in the main scope for data checks
 
     parser = argparse.ArgumentParser(description="Run the neurodevelopment ML pipeline")
-    parser.add_argument("--exp", type=int, nargs="+", choices=[1, 2, 3, 4, 5],
+    parser.add_argument("--exp", type=int, nargs="+", choices=[1, 2, 3, 4, 5, 6],
                         help="Run only specific experiments (default: all)")
     parser.add_argument("--skip-viz", action="store_true",
                         help="Skip figure generation")

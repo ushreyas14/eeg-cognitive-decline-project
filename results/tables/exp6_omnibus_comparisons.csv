@@ -1,0 +1,6 @@
+method,F,p,eta2_partial,n,outcome,outcome_label,p_bonferroni
+Kruskal-Wallis,1.0398935739475277,0.5945521850494564,0.0011580106614115008,899,symbolSearch_accuracy,Symbol Search Accuracy,1.0
+Kruskal-Wallis,0.602242812414466,0.7399879281652164,0.0009138737669415265,660,seqLearning_partial,Sequential Learning (Partial),1.0
+Kruskal-Wallis,0.9323095468748491,0.627410170103503,0.0005108545462327941,1826,attention,Attention Problems,1.0
+Kruskal-Wallis,1.467970673974219,0.4799922423473729,0.0008043674925886132,1826,internalizing,Internalizing,1.0
+Kruskal-Wallis,0.7031294707655193,0.7035863015591812,0.0003852764223372709,1826,externalizing,Externalizing,1.0

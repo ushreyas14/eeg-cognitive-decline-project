@@ -395,8 +395,387 @@ def plot_cognitive_age_curves(cog_curves_df, results_dir):
     _save(fig, os.path.join(results_dir, "figures", "cognitive_age_curves.png"))
 
 
+CAT_ORDER_VIZ = [
+    "Lower EEG-Derived Age",
+    "Age-Consistent EEG",
+    "Higher EEG-Derived Age",
+]
+CAT_COLORS = {
+    "Lower EEG-Derived Age": "#2563eb",
+    "Age-Consistent EEG":    "#059669",
+    "Higher EEG-Derived Age": "#dc2626",
+}
+SEX_COLORS = {"M": "#2563eb", "F": "#dc2626"}
+AGE_GROUP_ORDER_6 = ["5-7", "8-9", "10-11", "12-13", "14-16", "17-22"]
+
+
+# ═══ Experiment 6 figures ════════════════════════════════════════════════════
+
+def plot_gap_by_age_sex(ref_stats_df, results_dir):
+    """Mean ± SD of raw brain-age gap by age group, separately for M and F."""
+    df = ref_stats_df[ref_stats_df["reliable"]].copy()
+    if len(df) == 0:
+        logger.warning("No reliable age-sex groups — skipping gap_by_age_sex figure")
+        return
+
+    df["age_bin"] = pd.Categorical(df["age_bin"], categories=AGE_GROUP_ORDER_6, ordered=True)
+    df = df.sort_values("age_bin")
+
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    _style_ax(ax)
+
+    for sex, grp in df.groupby("sex"):
+        color = SEX_COLORS.get(sex, "#6b7280")
+        x = [AGE_GROUP_ORDER_6.index(str(ab)) for ab in grp["age_bin"] if str(ab) in AGE_GROUP_ORDER_6]
+        ax.errorbar(x, grp["mean_raw"], yerr=grp["sd_raw"],
+                    fmt="o-", color=color, capsize=4, markersize=7, linewidth=2,
+                    markeredgecolor="white", markeredgewidth=1.5, capthick=1.5,
+                    label=f"{'Male' if sex=='M' else 'Female'}")
+        for xi, (_, r) in zip(x, grp.iterrows()):
+            ax.text(xi, r["mean_raw"] + r["sd_raw"] + 0.08, f"n={r['n']}",
+                    ha="center", fontsize=7.5, color=color)
+
+    ax.axhline(0, color="#9ca3af", linestyle="--", linewidth=1.0)
+    ax.set_xticks(range(len(AGE_GROUP_ORDER_6)))
+    ax.set_xticklabels(AGE_GROUP_ORDER_6, fontsize=10)
+    ax.set_xlabel("Age Group (years)", fontsize=12)
+    ax.set_ylabel("Mean Raw Brain-Age Gap ± SD (years)", fontsize=12)
+    ax.set_title("Brain-Age Gap by Age Group and Sex", fontsize=13, fontweight="bold")
+    ax.legend(fontsize=10)
+    _save(fig, os.path.join(results_dir, "figures", "exp6_gap_by_age_sex.png"))
+
+
+def plot_gap_distribution_by_sex(gap_df_ref, results_dir):
+    """Overlapping histograms of raw brain-age gap by sex."""
+    fig, ax = plt.subplots(figsize=(9, 5))
+    _style_ax(ax)
+
+    for sex, color, label in [("M", "#2563eb", "Male"), ("F", "#dc2626", "Female")]:
+        vals = gap_df_ref[gap_df_ref["sex"] == sex]["brain_age_gap"].dropna()
+        ax.hist(vals, bins=40, alpha=0.55, color=color, edgecolor="white",
+                linewidth=0.6, label=f"{label} (n={len(vals)}, mean={vals.mean():.2f})")
+        ax.axvline(vals.mean(), color=color, linewidth=1.5, linestyle="--")
+
+    ax.axvline(0, color="#9ca3af", linewidth=1.0, linestyle=":", zorder=0)
+    ax.set_xlabel("Raw Brain-Age Gap (years)", fontsize=12)
+    ax.set_ylabel("Count", fontsize=12)
+    ax.set_title("Brain-Age Gap Distribution by Sex", fontsize=13, fontweight="bold")
+    ax.legend(fontsize=10)
+    _save(fig, os.path.join(results_dir, "figures", "exp6_gap_distribution_by_sex.png"))
+
+
+def plot_reference_percentile_curves(ref_stats_df, results_dir):
+    """Percentile bands (10/25/50/75/90) of raw gap across age groups, by sex."""
+    df = ref_stats_df[ref_stats_df["reliable"]].copy()
+    if len(df) == 0:
+        return
+
+    df["age_bin"] = pd.Categorical(df["age_bin"], categories=AGE_GROUP_ORDER_6, ordered=True)
+    df = df.sort_values(["sex", "age_bin"])
+
+    sexes = df["sex"].unique()
+    fig, axes = plt.subplots(1, len(sexes), figsize=(7 * len(sexes), 5.5), sharey=True)
+    if len(sexes) == 1:
+        axes = [axes]
+
+    for ax, sex in zip(axes, sorted(sexes)):
+        _style_ax(ax)
+        grp = df[df["sex"] == sex].sort_values("age_bin")
+        x = list(range(len(grp)))
+        color = SEX_COLORS.get(sex, "#6b7280")
+
+        ax.fill_between(x, grp["p10"], grp["p90"], alpha=0.12, color=color, label="10th–90th pct")
+        ax.fill_between(x, grp["p25"], grp["p75"], alpha=0.22, color=color, label="25th–75th pct")
+        ax.plot(x, grp["median_raw"], "o-", color=color, linewidth=2, markersize=7,
+                markeredgecolor="white", markeredgewidth=1.5, label="Median (50th pct)")
+        ax.axhline(0, color="#9ca3af", linewidth=1.0, linestyle="--")
+
+        ax.set_xticks(x)
+        ax.set_xticklabels(grp["age_bin"].tolist(), fontsize=10)
+        ax.set_xlabel("Age Group (years)", fontsize=11)
+        ax.set_ylabel("Raw Brain-Age Gap (years)", fontsize=11)
+        ax.set_title(f"{'Male' if sex=='M' else 'Female'} Reference Percentiles", fontsize=12, fontweight="bold")
+        ax.legend(fontsize=8, loc="upper right")
+
+    fig.suptitle("Brain-Age Gap Reference Percentile Curves by Age and Sex", fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    _save(fig, os.path.join(results_dir, "figures", "exp6_reference_percentile_curves.png"))
+
+
+def plot_gap_category_distribution(gap_df_cat, threshold_info, results_dir):
+    """Histogram of reference-adjusted gap with category regions shaded."""
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    _style_ax(ax)
+
+    # Use reference-adjusted gap if available, fall back to corrected gap
+    gap_col = "ref_adjusted_gap" if "ref_adjusted_gap" in gap_df_cat.columns else "brain_age_gap_corrected"
+    gap = gap_df_cat[gap_col].dropna().values
+    lb = threshold_info["mean"] - threshold_info["primary"]
+    ub = threshold_info["mean"] + threshold_info["primary"]
+
+    xmin, xmax = gap.min() - 0.5, gap.max() + 0.5
+    ax.axvspan(xmin, lb, alpha=0.10, color="#2563eb", zorder=0)
+    ax.axvspan(lb, ub, alpha=0.10, color="#059669", zorder=0)
+    ax.axvspan(ub, xmax, alpha=0.10, color="#dc2626", zorder=0)
+
+    ax.hist(gap, bins=50, color="#6b7280", alpha=0.70, edgecolor="white", linewidth=0.6, zorder=2)
+    ax.axvline(lb, color="#2563eb", linewidth=1.5, linestyle="--",
+               label=f"Lower/Consistent boundary ({lb:+.2f} yr)")
+    ax.axvline(ub, color="#dc2626", linewidth=1.5, linestyle="--",
+               label=f"Consistent/Higher boundary ({ub:+.2f} yr)")
+    ax.axvline(0, color="#9ca3af", linewidth=1.0, linestyle=":", zorder=1)
+
+    n = {cat: (gap_df_cat["category"] == cat).sum() for cat in CAT_ORDER_VIZ}
+    for cat, x_pos, va in [
+        (CAT_ORDER_VIZ[0], (xmin + lb) / 2, 0.90),
+        (CAT_ORDER_VIZ[1], (lb + ub) / 2,   0.90),
+        (CAT_ORDER_VIZ[2], (ub + xmax) / 2,  0.90),
+    ]:
+        color = CAT_COLORS[cat]
+        ax.text(x_pos, va, f"n={n.get(cat, 0)}", transform=ax.get_xaxis_transform(),
+                ha="center", va="top", fontsize=9, color=color, fontweight="bold")
+
+    xlabel = "Reference-Adjusted Brain-Age Gap (years)" if gap_col == "ref_adjusted_gap" else \
+             "Age-Bias Corrected Brain-Age Gap (years)"
+    ax.set_xlabel(xlabel, fontsize=12)
+    ax.set_ylabel("Count", fontsize=12)
+    ax.set_title(
+        f"EEG Age-Discrepancy Categories  (threshold = ±{threshold_info['primary']:.2f} yr = ±0.5 SD)",
+        fontsize=12, fontweight="bold",
+    )
+    ax.set_xlim(xmin, xmax)
+    ax.legend(fontsize=9, loc="upper right")
+    _save(fig, os.path.join(results_dir, "figures", "exp6_category_distribution.png"))
+
+
+def plot_category_demographics(category_stats, results_dir):
+    """Bar charts: n, age distribution, and sex ratio by category."""
+    fig, axes = plt.subplots(1, 3, figsize=(14, 5))
+    for ax in axes:
+        _style_ax(ax)
+
+    cats = category_stats["category"].tolist()
+    colors = [CAT_COLORS.get(c, "#6b7280") for c in cats]
+    x = np.arange(len(cats))
+
+    # Panel 1: subject counts
+    axes[0].bar(x, category_stats["n"], color=colors, alpha=0.85, edgecolor="white", width=0.6)
+    for xi, (_, row) in zip(x, category_stats.iterrows()):
+        axes[0].text(xi, row["n"] + 5, f"{row['pct_total']:.0f}%",
+                     ha="center", fontsize=10, fontweight="bold")
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels([c.replace("EEG-Derived Age", "EEG\nAge").replace("Age-Consistent EEG", "Age-\nConsistent") for c in cats], fontsize=9)
+    axes[0].set_ylabel("Number of subjects", fontsize=11)
+    axes[0].set_title("Category Counts", fontsize=12, fontweight="bold")
+
+    # Panel 2: mean age ± SD
+    axes[1].bar(x, category_stats["age_mean"], color=colors, alpha=0.85, edgecolor="white", width=0.6,
+                yerr=category_stats["age_sd"], capsize=4, error_kw={"elinewidth": 1.5})
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels([c.replace("EEG-Derived Age", "EEG\nAge").replace("Age-Consistent EEG", "Age-\nConsistent") for c in cats], fontsize=9)
+    axes[1].set_ylabel("Chronological Age (years)", fontsize=11)
+    axes[1].set_title("Age Distribution per Category", fontsize=12, fontweight="bold")
+
+    # Panel 3: % male
+    axes[2].bar(x, category_stats["pct_male"], color=colors, alpha=0.85, edgecolor="white", width=0.6)
+    axes[2].axhline(50, color="#9ca3af", linestyle="--", linewidth=1.0, zorder=0)
+    for xi, (_, row) in zip(x, category_stats.iterrows()):
+        axes[2].text(xi, row["pct_male"] + 1, f"{row['pct_male']:.0f}%",
+                     ha="center", fontsize=10, fontweight="bold")
+    axes[2].set_xticks(x)
+    axes[2].set_xticklabels([c.replace("EEG-Derived Age", "EEG\nAge").replace("Age-Consistent EEG", "Age-\nConsistent") for c in cats], fontsize=9)
+    axes[2].set_ylabel("% Male", fontsize=11)
+    axes[2].set_ylim(0, 100)
+    axes[2].set_title("Sex Distribution per Category", fontsize=12, fontweight="bold")
+
+    fig.suptitle("EEG Age-Discrepancy Category Demographics", fontsize=14, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    _save(fig, os.path.join(results_dir, "figures", "exp6_category_demographics.png"))
+
+
+def plot_category_outcome_comparisons(gap_df_cat, omnibus_df, results_dir):
+    """Boxplots of each outcome by category, annotated with p-values."""
+    outcomes = {
+        "symbolSearch_accuracy": "Symbol Search\nAccuracy",
+        "seqLearning_partial": "Seq. Learning\n(Partial Credit)",
+        "attention": "Attention\nProblems",
+        "internalizing": "Internalizing",
+        "externalizing": "Externalizing",
+    }
+
+    # Keep only outcomes that have data in gap_df_cat
+    valid_outcomes = {k: v for k, v in outcomes.items() if k in gap_df_cat.columns}
+    if not valid_outcomes:
+        return
+
+    ncols = len(valid_outcomes)
+    fig, axes = plt.subplots(1, ncols, figsize=(3.5 * ncols, 5.5))
+    if ncols == 1:
+        axes = [axes]
+
+    p_lookup = {}
+    if omnibus_df is not None and len(omnibus_df) > 0:
+        for _, row in omnibus_df.iterrows():
+            p_lookup[row["outcome"]] = row["p_bonferroni"]
+
+    colors = [CAT_COLORS[c] for c in CAT_ORDER_VIZ]
+
+    for ax, (col, label) in zip(axes, valid_outcomes.items()):
+        _style_ax(ax)
+
+        groups = []
+        for cat in CAT_ORDER_VIZ:
+            mask = (gap_df_cat["category"] == cat) & gap_df_cat[col].notna()
+            groups.append(gap_df_cat.loc[mask, col].values)
+
+        bp = ax.boxplot(
+            groups, patch_artist=True, widths=0.55,
+            medianprops={"color": "white", "linewidth": 2.0},
+            whiskerprops={"linewidth": 1.2},
+            capprops={"linewidth": 1.5},
+            flierprops={"marker": ".", "markersize": 3, "alpha": 0.3},
+        )
+        for patch, color in zip(bp["boxes"], colors):
+            patch.set_facecolor(color)
+            patch.set_alpha(0.75)
+
+        ax.set_xticks([1, 2, 3])
+        ax.set_xticklabels(["Lower", "Consistent", "Higher"], fontsize=9)
+        ax.set_title(label, fontsize=11, fontweight="bold")
+
+        # Annotate omnibus p
+        p_bonf = p_lookup.get(col, np.nan)
+        if np.isfinite(p_bonf):
+            sig = "**" if p_bonf < 0.01 else ("*" if p_bonf < 0.05 else "ns")
+            ax.text(0.98, 0.98, f"p_Bonf={p_bonf:.3f} {sig}",
+                    transform=ax.transAxes, ha="right", va="top", fontsize=8,
+                    bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8))
+
+    fig.suptitle("Outcome Scores by EEG Age-Discrepancy Category", fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    _save(fig, os.path.join(results_dir, "figures", "exp6_outcome_comparisons.png"))
+
+
+def plot_individual_example(gap_df_ref, results_dir, subject_idx=None):
+    """
+    Show a single participant's raw gap vs the reference distribution for
+    their age-sex group. Picks the subject closest to the median of the
+    'Age-Consistent EEG' group by default, so the example is representative.
+    """
+    consistent = gap_df_ref[gap_df_ref["category"] == "Age-Consistent EEG"]
+    if len(consistent) == 0:
+        return
+
+    # Choose a subject whose gap is near the group median
+    if subject_idx is None:
+        median_gap = consistent["brain_age_gap"].median()
+        subject_idx = (consistent["brain_age_gap"] - median_gap).abs().idxmin()
+
+    subj = gap_df_ref.loc[subject_idx]
+    age_bin = subj["age_bin"]
+    sex = subj["sex"]
+    gap_val = subj["brain_age_gap"]
+    ref_mean = subj.get("loo_ref_mean", np.nan)
+    ref_sd = subj.get("loo_ref_sd", np.nan)
+    z = subj.get("z_score", np.nan)
+    pct = subj.get("percentile_within_group", np.nan)
+
+    # Get peer group distribution (all subjects with same age_bin and sex, excluding subj)
+    peers = gap_df_ref[
+        (gap_df_ref["age_bin"] == age_bin) &
+        (gap_df_ref["sex"] == sex) &
+        (gap_df_ref.index != subject_idx)
+    ]["brain_age_gap"].dropna().values
+
+    if len(peers) < 5:
+        return
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    _style_ax(ax)
+
+    ax.hist(peers, bins=25, color="#6b7280", alpha=0.65, edgecolor="white", linewidth=0.7,
+            label=f"Peers: {age_bin} yr, {'Male' if sex=='M' else 'Female'} (n={len(peers)})")
+    ax.axvline(np.mean(peers), color="#9ca3af", linewidth=1.5, linestyle="--", label="Peer mean")
+
+    # Mark the example subject
+    ax.axvline(gap_val, color="#dc2626", linewidth=2.5, linestyle="-",
+               label=f"This participant ({gap_val:+.2f} yr)")
+
+    # Annotation
+    info_lines = [
+        f"Actual age: {subj['actual_age']:.1f} yr",
+        f"EEG-predicted age: {subj['predicted_age']:.1f} yr",
+        f"Raw gap: {gap_val:+.2f} yr",
+        f"Reference mean (peers): {ref_mean:+.2f} yr" if np.isfinite(ref_mean) else "Reference: unreliable",
+        f"Z-score: {z:.2f}" if np.isfinite(z) else "Z-score: N/A",
+        f"Percentile: {pct:.0f}th" if np.isfinite(pct) else "Percentile: N/A",
+        f"Category: {subj['category']}",
+    ]
+    ax.text(0.98, 0.97, "\n".join(info_lines), transform=ax.transAxes,
+            ha="right", va="top", fontsize=9.5,
+            bbox=dict(boxstyle="round,pad=0.5", facecolor="#f0f9ff", edgecolor="#2563eb", alpha=0.9))
+
+    ax.set_xlabel("Raw Brain-Age Gap (years)", fontsize=12)
+    ax.set_ylabel("Count", fontsize=12)
+    ax.set_title(
+        f"Individual Reference Comparison Example\n"
+        f"({age_bin} yr, {'Male' if sex=='M' else 'Female'} reference group)",
+        fontsize=12, fontweight="bold"
+    )
+    ax.legend(fontsize=9, loc="upper left")
+    _save(fig, os.path.join(results_dir, "figures", "exp6_individual_example.png"))
+
+
+def plot_sensitivity_analysis(sensitivity_df, results_dir):
+    """Category sizes and significant outcomes across threshold choices."""
+    if sensitivity_df is None or len(sensitivity_df) == 0:
+        return
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    for ax in axes:
+        _style_ax(ax)
+
+    x = np.arange(len(sensitivity_df))
+    labels = sensitivity_df["threshold_label"].tolist()
+
+    bot = np.zeros(len(sensitivity_df))
+    for col, cat, color in [
+        ("pct_lower", "Lower EEG-Derived Age", "#2563eb"),
+        ("pct_consistent", "Age-Consistent EEG", "#059669"),
+        ("pct_higher", "Higher EEG-Derived Age", "#dc2626"),
+    ]:
+        vals = sensitivity_df[col].values
+        axes[0].bar(x, vals, bottom=bot, color=color, alpha=0.80,
+                    edgecolor="white", width=0.6, label=cat)
+        bot += vals
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(labels, fontsize=9, rotation=15, ha="right")
+    axes[0].set_ylabel("% of subjects", fontsize=11)
+    axes[0].set_ylim(0, 105)
+    axes[0].set_title("Category Sizes Across Thresholds", fontsize=12, fontweight="bold")
+    axes[0].legend(fontsize=8, loc="upper right")
+
+    # Accept either old or new column names
+    raw_col = "n_sig_raw" if "n_sig_raw" in sensitivity_df.columns else "n_outcomes_p05_raw"
+    bonf_col = "n_sig_bonferroni" if "n_sig_bonferroni" in sensitivity_df.columns else "n_outcomes_p05_bonferroni"
+    axes[1].plot(x, sensitivity_df[raw_col], "o-", color="#2563eb", linewidth=2, markersize=8, label="Raw p < 0.05")
+    axes[1].plot(x, sensitivity_df[bonf_col], "s--", color="#dc2626", linewidth=2, markersize=8, label="Bonferroni p < 0.05")
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(labels, fontsize=9, rotation=15, ha="right")
+    axes[1].set_ylabel("Number of significant outcomes", fontsize=11)
+    axes[1].set_yticks(range(0, 8))
+    axes[1].set_title("Significant Outcomes Across Thresholds", fontsize=12, fontweight="bold")
+    axes[1].legend(fontsize=9)
+    axes[0].axvline(0, color="#f59e0b", linewidth=2, linestyle=":", alpha=0.8)
+    axes[1].axvline(0, color="#f59e0b", linewidth=2, linestyle=":", alpha=0.8)
+
+    fig.suptitle("Sensitivity Analysis: Threshold Choice Impact", fontsize=13, fontweight="bold")
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    _save(fig, os.path.join(results_dir, "figures", "exp6_sensitivity_analysis.png"))
+
+
 def generate_all_figures(exp1_results, exp2_results, exp3_results,
-                          exp4_results, exp5_results, results_dir):
+                          exp4_results, exp5_results, results_dir, exp6_results=None):
     """Generate all publication figures from experiment results."""
     logger.info("=" * 60)
     logger.info("GENERATING FIGURES")
@@ -436,5 +815,25 @@ def generate_all_figures(exp1_results, exp2_results, exp3_results,
             plot_developmental_eeg_trends(exp5_results["age_trends_family"], results_dir)
         if exp5_results.get("cognitive_age_curves") is not None:
             plot_cognitive_age_curves(exp5_results["cognitive_age_curves"], results_dir)
+
+    if exp6_results:
+        logger.info("\n--- Experiment 6 figures ---")
+        # Key: new module uses gap_df_ref; old module used gap_df_cat — handle both
+        gap_df_key = "gap_df_ref" if "gap_df_ref" in exp6_results else "gap_df_cat"
+        gap_df6 = exp6_results[gap_df_key]
+
+        if exp6_results.get("ref_stats") is not None:
+            plot_gap_by_age_sex(exp6_results["ref_stats"], results_dir)
+            plot_gap_distribution_by_sex(gap_df6, results_dir)
+            plot_reference_percentile_curves(exp6_results["ref_stats"], results_dir)
+
+        plot_gap_category_distribution(gap_df6, exp6_results["threshold_info"], results_dir)
+        plot_category_demographics(exp6_results["category_stats"], results_dir)
+        plot_category_outcome_comparisons(gap_df6, exp6_results.get("omnibus_df"), results_dir)
+
+        if gap_df_key == "gap_df_ref":
+            plot_individual_example(gap_df6, results_dir)
+
+        plot_sensitivity_analysis(exp6_results.get("sensitivity_df"), results_dir)
 
     logger.info("\nAll figures generated.")
